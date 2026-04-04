@@ -30,8 +30,7 @@ DESTINATION  PostgreSQL in Docker (localhost:5432/basket_craft)
   schema: staging
   ├── orders
   ├── order_items
-  ├── products
-  └── categories
+  └── products
 
         │
         │  transform.py  (SQL aggregation inside Postgres)
@@ -67,12 +66,11 @@ basket-craft-pipeline/
 
 | Table | Key Columns |
 |---|---|
-| `orders` | `order_id`, `order_date`, `customer_id` |
-| `order_items` | `order_id`, `product_id`, `quantity`, `unit_price` |
-| `products` | `product_id`, `product_name`, `category_id` |
-| `categories` | `category_id`, `category_name` |
+| `orders` | `order_id`, `created_at`, `website_session_id`, `user_id`, `primary_product_id`, `items_purchased`, `price_usd`, `cogs_usd` |
+| `order_items` | `order_item_id`, `created_at`, `order_id`, `product_id`, `is_primary_item`, `price_usd`, `cogs_usd` |
+| `products` | `product_id`, `created_at`, `product_name`, `description` |
 
-> Schema will be verified against live database before implementation begins.
+> No `categories` table exists. The dashboard groups by `product_name` instead of category.
 
 ---
 
@@ -84,7 +82,7 @@ basket-craft-pipeline/
 - Prints row count after each table load
 - Runs inside a transaction — rolls back on failure, no partial writes
 
-Tables loaded: `orders`, `order_items`, `products`, `categories`
+Tables loaded: `orders`, `order_items`, `products`
 
 ---
 
@@ -95,16 +93,14 @@ Truncates `analytics.monthly_sales_summary`, then runs:
 ```sql
 INSERT INTO analytics.monthly_sales_summary
 SELECT
-    DATE_TRUNC('month', o.order_date)  AS year_month,
-    c.category_name,
-    SUM(oi.quantity * oi.unit_price)   AS total_revenue,
-    COUNT(DISTINCT o.order_id)         AS order_count,
-    SUM(oi.quantity * oi.unit_price)
-      / NULLIF(COUNT(DISTINCT o.order_id), 0) AS avg_order_value
+    DATE_TRUNC('month', oi.created_at)      AS year_month,
+    p.product_name,
+    SUM(oi.price_usd)                       AS total_revenue,
+    COUNT(DISTINCT oi.order_id)             AS order_count,
+    SUM(oi.price_usd)
+      / NULLIF(COUNT(DISTINCT oi.order_id), 0) AS avg_order_value
 FROM staging.order_items oi
-JOIN staging.orders    o  ON o.order_id    = oi.order_id
-JOIN staging.products  p  ON p.product_id  = oi.product_id
-JOIN staging.categories c ON c.category_id = p.category_id
+JOIN staging.products p ON p.product_id = oi.product_id
 GROUP BY 1, 2
 ORDER BY 1, 2;
 ```
@@ -114,7 +110,7 @@ ORDER BY 1, 2;
 | Column | Type | Description |
 |---|---|---|
 | `year_month` | `DATE` | First day of the month (e.g. 2024-01-01) |
-| `category_name` | `TEXT` | Product category |
+| `product_name` | `TEXT` | Product name (no category column exists in source) |
 | `total_revenue` | `NUMERIC(12,2)` | Sum of quantity × unit_price |
 | `order_count` | `INTEGER` | Distinct orders in that month/category |
 | `avg_order_value` | `NUMERIC(10,2)` | total_revenue / order_count |
