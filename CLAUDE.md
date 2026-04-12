@@ -11,39 +11,31 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the full pipeline (extract + transform)
-python pipeline.py
+# --- Local pipeline (MySQL → Docker Postgres) ---
+python pipeline.py        # full pipeline (extract + transform)
+python extract.py         # extract only (3 tables → staging schema)
+python transform.py       # transform only (staging → analytics mart)
 
-# Run stages individually
-python extract.py
-python transform.py
+docker compose up -d      # start local Postgres container
+docker compose down       # stop it
 
-# Start the Postgres container
-docker compose up -d
-
-# Stop the Postgres container
-docker compose down
+# --- RDS pipeline (MySQL → AWS RDS PostgreSQL) ---
+python extract_rds.py     # extract all 8 tables → raw schema on RDS
 ```
 
 ## Architecture
 
-Two-stage ELT pipeline: MySQL source → local Postgres (Docker).
+This repo contains two independent ELT pipelines sharing the same MySQL source.
 
-**Stage 1 — `extract.py`:** Connects to MySQL at `db.isba.co` and full-reloads three tables (`orders`, `order_items`, `products`) into a `staging` schema in the local Postgres container. Creates the schema and tables on first run. Truncates before each load so re-runs are idempotent.
+### Pipeline 1 — Local (Docker Postgres)
 
-**Stage 2 — `transform.py`:** Runs a single SQL aggregation inside Postgres: joins `staging.order_items` to `staging.products`, groups by month (`DATE_TRUNC`) and `product_name`, and writes the result to `analytics.monthly_sales_summary`. Also self-bootstrapping via `CREATE SCHEMA/TABLE IF NOT EXISTS`.
+`extract.py` → `transform.py`, orchestrated by `pipeline.py`.
 
-**`pipeline.py`:** Calls `extract()` then `transform()` in sequence. No orchestration framework — just two imports.
+- **Extract:** Full-reloads 3 tables (`orders`, `order_items`, `products`) from MySQL into a `staging` schema on the local Postgres container. Truncates before each load (idempotent).
+- **Transform:** Single SQL aggregation — joins `staging.order_items` to `staging.products`, groups by month (`DATE_TRUNC`) and `product_name`, writes to `analytics.monthly_sales_summary`.
+- **DBeaver connection:** `localhost:5432 / basket_craft / postgres / postgres`
 
-## Environment
-
-Credentials live in `.env` (gitignored). Copy `.env.example` to `.env` and fill in `MYSQL_PASSWORD`. The Postgres credentials (`postgres/postgres`) are hardcoded in `docker-compose.yml` and `.env.example`.
-
-MySQL connection key in `.env` is `MYSQL_DB` (not `MYSQL_DATABASE`).
-
-## Destination Schema
-
-`analytics.monthly_sales_summary` — the dashboard table consumed by DBeaver:
+`analytics.monthly_sales_summary` schema:
 
 | Column | Type |
 |---|---|
@@ -53,4 +45,23 @@ MySQL connection key in `.env` is `MYSQL_DB` (not `MYSQL_DATABASE`).
 | `order_count` | `INTEGER` |
 | `avg_order_value` | `NUMERIC(10,2)` |
 
-Connect DBeaver to `localhost:5432 / basket_craft / postgres / postgres` to query it.
+### Pipeline 2 — RDS (AWS PostgreSQL)
+
+`extract_rds.py` — standalone script, no transform stage yet.
+
+- Full-reloads all 8 MySQL tables into the `raw` schema on AWS RDS. Drops and recreates each table on every run (idempotent).
+- Introspects MySQL column types via `DESCRIBE` and maps them to Postgres types using `map_type()`. Falls back to `TEXT` for unmapped types.
+- Streams rows in chunks of 5000 (`fetchmany`) to avoid loading large tables (e.g., `website_pageviews`: 1.1M rows) into memory. Inserts via `execute_values` with `page_size=5000`.
+- Reconnects to MySQL per table to avoid connection timeouts on large loads.
+
+## Environment
+
+Credentials live in `.env` (gitignored). Copy `.env.example` to `.env` and fill in values.
+
+Two credential groups in `.env`:
+
+- **MySQL** — `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB` (note: `MYSQL_DB` not `MYSQL_DATABASE`)
+- **Local Postgres** — `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASSWORD` (hardcoded `postgres/postgres` in `docker-compose.yml`)
+- **RDS** — `RDS_HOST`, `RDS_PORT`, `RDS_USER`, `RDS_PASSWORD`, `RDS_DATABASE`
+
+The RDS instance's security group must have an inbound rule allowing TCP port 5432 from your current IP.
