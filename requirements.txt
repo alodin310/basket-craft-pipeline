@@ -5,3 +5,4 @@ pandas
 sqlalchemy
 snowflake-connector-python[pandas]
 pytest
+dbt-snowflake
