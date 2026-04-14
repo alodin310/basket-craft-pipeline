@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: fct_order_items
+    description: >
+      One row per order line item. Grain: one row per order_item_id.
+      Joins stg_order_items to stg_orders to bring order-level attributes
+      (customer_id, order_date) down to the line-item level.
+    columns:
+      - name: order_item_id
+        description: "Primary key — uniquely identifies each order line item."
+        tests:
+          - unique
+          - not_null
