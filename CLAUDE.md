@@ -27,6 +27,14 @@ python load_snowflake.py  # load all 8 raw tables from RDS into Snowflake basket
 
 # --- Tests ---
 pytest                    # run unit tests (3 tests, no live connections needed)
+
+# --- dbt (transform layer — run from basket_craft/ subfolder) ---
+cd basket_craft
+set -a && source ../.env && set +a  # export .env vars to shell (dbt reads from shell, not python-dotenv)
+dbt run                   # build all 8 models (4 staging views + 4 mart tables)
+dbt test                  # run schema tests (unique + not_null on fct_order_items.order_item_id)
+dbt docs generate         # build docs catalog
+dbt docs serve            # serve docs at http://localhost:8080 (Ctrl+C to stop)
 ```
 
 ## Architecture
@@ -69,6 +77,30 @@ This repo contains two independent ELT pipelines sharing the same MySQL source.
 - Writes to `basket_craft.raw` on Snowflake using `write_pandas(..., overwrite=True, auto_create_table=True)`. Fully idempotent — drop+recreate on every run.
 - Uses `SNOWFLAKE_*` env vars from `.env`.
 - **Snowsight:** Log in at app.snowflake.com → Data → Databases → BASKET_CRAFT → RAW
+
+### Pipeline 4 — dbt Transform (Snowflake analytics schema)
+
+dbt project lives at `basket_craft/` in the repo root. Runs against `basket_craft.analytics` on Snowflake.
+
+**profiles.yml** lives at `~/.dbt/profiles.yml` — outside the repo, never committed. It reads all Snowflake credentials from the shell environment using `env_var()`. Before running any dbt command, export `.env` to the shell: `set -a && source .env && set +a`.
+
+**Staging models** (views, one per source table):
+
+| Model | Source |
+|---|---|
+| `stg_orders` | `raw.ORDERS` |
+| `stg_order_items` | `raw.ORDER_ITEMS` |
+| `stg_products` | `raw.PRODUCTS` |
+| `stg_customers` | `raw.USERS` |
+
+**Mart models** (tables):
+
+| Model | Description |
+|---|---|
+| `dim_date` | Date dimension, 2020–2030, generated from Snowflake date spine |
+| `dim_customers` | One row per customer, built from `stg_customers` |
+| `dim_products` | One row per product, built from `stg_products` |
+| `fct_order_items` | One row per order line item — joins `stg_order_items` + `stg_orders` |
 
 ## Environment
 
