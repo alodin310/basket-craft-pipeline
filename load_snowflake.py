@@ -19,8 +19,8 @@ TABLES = [
 ]
 
 
-def lowercase_columns(df):
-    df.columns = [c.lower() for c in df.columns]
+def normalize_columns(df):
+    df.columns = [c.upper() for c in df.columns]
     return df
 
 
@@ -51,7 +51,7 @@ def load_tables():
     with engine.connect() as conn:
         for table in TABLES:
             df = pd.read_sql(f"SELECT * FROM raw.{table}", conn)
-            df = lowercase_columns(df)
+            df = normalize_columns(df)
             success, nchunks, nrows, _ = write_pandas(
                 sf,
                 df,
