@@ -21,6 +21,12 @@ docker compose down       # stop it
 
 # --- RDS pipeline (MySQL → AWS RDS PostgreSQL) ---
 python extract_rds.py     # extract all 8 tables → raw schema on RDS
+
+# --- Snowflake pipeline (RDS PostgreSQL → Snowflake) ---
+python load_snowflake.py  # load all 8 raw tables from RDS into Snowflake basket_craft.raw
+
+# --- Tests ---
+pytest                    # run unit tests (3 tests, no live connections needed)
 ```
 
 ## Architecture
@@ -54,6 +60,16 @@ This repo contains two independent ELT pipelines sharing the same MySQL source.
 - Streams rows in chunks of 5000 (`fetchmany`) to avoid loading large tables (e.g., `website_pageviews`: 1.1M rows) into memory. Inserts via `execute_values` with `page_size=5000`.
 - Reconnects to MySQL per table to avoid connection timeouts on large loads.
 
+### Pipeline 3 — Snowflake (RDS PostgreSQL → Snowflake)
+
+`load_snowflake.py` — standalone script, no transform stage.
+
+- Reads all 8 tables from the `raw` schema on AWS RDS into pandas DataFrames (in-memory, no chunking needed).
+- Forces all column names to lowercase for Snowflake identifier safety (critical for dbt compatibility).
+- Writes to `basket_craft.raw` on Snowflake using `write_pandas(..., overwrite=True, auto_create_table=True)`. Fully idempotent — drop+recreate on every run.
+- Uses `SNOWFLAKE_*` env vars from `.env`.
+- **Snowsight:** Log in at app.snowflake.com → Data → Databases → BASKET_CRAFT → RAW
+
 ## Environment
 
 Credentials live in `.env` (gitignored). Copy `.env.example` to `.env` and fill in values.
@@ -63,5 +79,6 @@ Two credential groups in `.env`:
 - **MySQL** — `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB` (note: `MYSQL_DB` not `MYSQL_DATABASE`)
 - **Local Postgres** — `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASSWORD` (hardcoded `postgres/postgres` in `docker-compose.yml`)
 - **RDS** — `RDS_HOST`, `RDS_PORT`, `RDS_USER`, `RDS_PASSWORD`, `RDS_DATABASE`
+- **Snowflake** — `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`
 
 The RDS instance's security group must have an inbound rule allowing TCP port 5432 from your current IP.
