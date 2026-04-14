@@ -12,5 +12,5 @@ sources:
         description: "One row per line item within an order, linked to a product."
       - name: products
         description: "Product catalog with pricing and category information."
-      - name: customers
-        description: "Customer master table with account and contact details."
+      - name: users
+        description: "Customer master table with account, contact, and address details."
