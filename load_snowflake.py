@@ -55,7 +55,7 @@ def load_tables():
             success, nchunks, nrows, _ = write_pandas(
                 sf,
                 df,
-                table_name=table,
+                table_name=table.upper(),
                 database=os.environ["SNOWFLAKE_DATABASE"].upper(),
                 schema=os.environ["SNOWFLAKE_SCHEMA"].upper(),
                 overwrite=True,
