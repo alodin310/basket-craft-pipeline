@@ -56,8 +56,8 @@ def load_tables():
                 sf,
                 df,
                 table_name=table,
-                database=os.environ["SNOWFLAKE_DATABASE"],
-                schema=os.environ["SNOWFLAKE_SCHEMA"],
+                database=os.environ["SNOWFLAKE_DATABASE"].upper(),
+                schema=os.environ["SNOWFLAKE_SCHEMA"].upper(),
                 overwrite=True,
                 auto_create_table=True,
             )
