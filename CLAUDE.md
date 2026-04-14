@@ -65,7 +65,7 @@ This repo contains two independent ELT pipelines sharing the same MySQL source.
 `load_snowflake.py` — standalone script, no transform stage.
 
 - Reads all 8 tables from the `raw` schema on AWS RDS into pandas DataFrames (in-memory, no chunking needed).
-- Forces all column names to lowercase for Snowflake identifier safety (critical for dbt compatibility).
+- Uppercases all column and table names so Snowflake stores them case-insensitively (critical for dbt compatibility — dbt references columns as unquoted lowercase, which Snowflake folds to uppercase).
 - Writes to `basket_craft.raw` on Snowflake using `write_pandas(..., overwrite=True, auto_create_table=True)`. Fully idempotent — drop+recreate on every run.
 - Uses `SNOWFLAKE_*` env vars from `.env`.
 - **Snowsight:** Log in at app.snowflake.com → Data → Databases → BASKET_CRAFT → RAW
